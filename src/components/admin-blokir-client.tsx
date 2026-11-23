@@ -40,7 +40,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import Link from "next/link";
-import { StudentAutocomplete } from "./student-autocomplete";
+import { MultiStudentAutocomplete } from "./multi-student-autocomplete";
 import { CopyIdButton } from "./copy-id-button";
 import { toast } from "./ui/toast";
 
@@ -82,7 +82,7 @@ export function AdminBlokirClient({
   const [searchQuery, setSearchQuery] = useState("");
 
   // Form state di dalam Dialog
-  const [selectedStudentId, setSelectedStudentId] = useState("");
+  const [selectedStudentIds, setSelectedStudentIds] = useState<number[]>([]);
   const [selectedSubjectId, setSelectedSubjectId] = useState("");
   const [selectedReason, setSelectedReason] = useState("TUGAS_HARIAN");
 
@@ -353,7 +353,7 @@ export function AdminBlokirClient({
                 type: "success",
                 description: res.message,
               });
-              setSelectedStudentId("");
+              setSelectedStudentIds([]);
               setSelectedSubjectId("");
               setOpenAddDialog(false);
             }}
@@ -365,12 +365,12 @@ export function AdminBlokirClient({
 
             <div className="space-y-1.5">
               <label className="text-xs font-semibold">
-                Cari & Pilih Siswa (Nama / ID Ujian) *
+                Cari & Pilih Siswa (Bisa Pilih Banyak) *
               </label>
-              <StudentAutocomplete
+              <MultiStudentAutocomplete
                 students={students}
-                selectedStudentId={selectedStudentId}
-                onSelect={setSelectedStudentId}
+                selectedStudentIds={selectedStudentIds}
+                onChange={setSelectedStudentIds}
               />
             </div>
 

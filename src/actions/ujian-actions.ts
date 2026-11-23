@@ -8,7 +8,7 @@ import {
   examBlocks,
   examMakeups,
 } from "@/db/schema";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 function revalidateAll() {
@@ -82,11 +82,30 @@ export async function deleteStudent(
   return { success: true, message: "Data siswa berhasil dihapus." };
 }
 
-// --- DAFTAR BLOKIR (1 MAPEL SAJA, ATAU TANPA MAPEL JIKA TATA TERTIB) ---
+// Helper untuk parsing array studentIds dari FormData
+function parseStudentIds(formData: FormData): number[] {
+  const raw = formData.get("studentIds");
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(String(raw));
+    if (!Array.isArray(parsed)) return [];
+    return Array.from(
+      new Set(
+        parsed
+          .map((id) => Number(id))
+          .filter((id) => !Number.isNaN(id) && id > 0),
+      ),
+    );
+  } catch {
+    return [];
+  }
+}
+
+// --- DAFTAR BLOKIR (MULTI SISWA UNTUK 1 PENYEBAB & 1 MAPEL) ---
 export async function addExamBlock(
   formData: FormData,
 ): Promise<{ success: boolean; message: string }> {
-  const studentId = Number(formData.get("studentId"));
+  const studentIds = parseStudentIds(formData);
   const reason = formData.get("reason") as "TUGAS_HARIAN" | "TATA_TERTIB";
   const subjectIdRaw = formData.get("subjectId");
   const parsedSubjectId =
@@ -96,10 +115,10 @@ export async function addExamBlock(
   const subjectId = reason === "TUGAS_HARIAN" ? parsedSubjectId : null;
   const notes = (formData.get("notes") as string)?.trim() || "";
 
-  if (!studentId || !reason) {
+  if (studentIds.length === 0 || !reason) {
     return {
       success: false,
-      message: "Pilih siswa dan penyebab blokir terlebih dahulu.",
+      message: "Pilih minimal 1 siswa dan penyebab blokir terlebih dahulu.",
     };
   }
 
@@ -110,58 +129,63 @@ export async function addExamBlock(
     };
   }
 
-  if (reason === "TATA_TERTIB") {
-    const existingRuleBlock = await db
-      .select({ id: examBlocks.id })
-      .from(examBlocks)
-      .where(
-        and(
-          eq(examBlocks.studentId, studentId),
-          eq(examBlocks.reason, "TATA_TERTIB"),
-          eq(examBlocks.isCleared, false),
-        ),
-      )
-      .limit(1);
+  // Cek entri blokir aktif yang sudah ada untuk daftar siswa terpilih
+  const existingRows =
+    reason === "TATA_TERTIB"
+      ? await db
+          .select({ studentId: examBlocks.studentId })
+          .from(examBlocks)
+          .where(
+            and(
+              inArray(examBlocks.studentId, studentIds),
+              eq(examBlocks.reason, "TATA_TERTIB"),
+              eq(examBlocks.isCleared, false),
+            ),
+          )
+      : await db
+          .select({ studentId: examBlocks.studentId })
+          .from(examBlocks)
+          .where(
+            and(
+              inArray(examBlocks.studentId, studentIds),
+              eq(examBlocks.subjectId, subjectId!),
+              eq(examBlocks.reason, "TUGAS_HARIAN"),
+              eq(examBlocks.isCleared, false),
+            ),
+          );
 
-    if (existingRuleBlock.length > 0) {
-      return {
-        success: false,
-        message:
-          "Gagal: Siswa ini sudah tercatat diblokir karena pelanggaran tata tertib.",
-      };
-    }
-  } else if (subjectId) {
-    const existingSubjectBlock = await db
-      .select({ id: examBlocks.id })
-      .from(examBlocks)
-      .where(
-        and(
-          eq(examBlocks.studentId, studentId),
-          eq(examBlocks.subjectId, subjectId),
-          eq(examBlocks.reason, "TUGAS_HARIAN"),
-          eq(examBlocks.isCleared, false),
-        ),
-      )
-      .limit(1);
+  const existingSet = new Set(existingRows.map((r) => r.studentId));
+  const validStudentIds = studentIds.filter((id) => !existingSet.has(id));
 
-    if (existingSubjectBlock.length > 0) {
-      return {
-        success: false,
-        message:
-          "Gagal: Siswa & mata pelajaran tersebut sudah ter-upload di daftar blokir!",
-      };
-    }
+  if (validStudentIds.length === 0) {
+    return {
+      success: false,
+      message:
+        "Gagal: Semua siswa yang dipilih sudah tercatat aktif pada daftar blokir ini!",
+    };
   }
 
-  await db.insert(examBlocks).values({
-    studentId,
-    subjectId,
-    reason,
-    notes,
-  });
+  await db.insert(examBlocks).values(
+    validStudentIds.map((studentId) => ({
+      studentId,
+      subjectId,
+      reason,
+      notes,
+    })),
+  );
 
   revalidateAll();
-  return { success: true, message: "Berhasil ditambahkan ke daftar blokir." };
+
+  const skippedCount = studentIds.length - validStudentIds.length;
+  const extraMsg =
+    skippedCount > 0
+      ? ` (${skippedCount} siswa dilewati karena sudah terdaftar)`
+      : "";
+
+  return {
+    success: true,
+    message: `Berhasil menambahkan ${validStudentIds.length} siswa ke daftar blokir${extraMsg}.`,
+  };
 }
 
 export async function toggleBlockCleared(id: number, current: boolean) {
@@ -177,11 +201,11 @@ export async function deleteExamBlock(id: number) {
   revalidateAll();
 }
 
-// --- DAFTAR SUSULAN (1 MAPEL PER INPUT + CEK DUPLIKAT) ---
+// --- DAFTAR SUSULAN (MULTI SISWA UNTUK 1 ALASAN & 1 MAPEL) ---
 export async function addExamMakeup(
   formData: FormData,
 ): Promise<{ success: boolean; message: string }> {
-  const studentId = Number(formData.get("studentId"));
+  const studentIds = parseStudentIds(formData);
   const subjectId = Number(formData.get("subjectId"));
   const reason = formData.get("reason") as
     | "TIDAK_MASUK"
@@ -189,43 +213,57 @@ export async function addExamMakeup(
     | "JAWABAN_TIDAK_TERKIRIM";
   const notes = (formData.get("notes") as string)?.trim() || "";
 
-  if (!studentId || !subjectId || !reason) {
+  if (studentIds.length === 0 || !subjectId || !reason) {
     return {
       success: false,
-      message: "Lengkapi data siswa, mata pelajaran, dan alasan.",
+      message: "Lengkapi pilihan siswa (min. 1), mata pelajaran, dan alasan.",
     };
   }
 
-  // Cek duplikasi aktif agar tidak ter-upload 2 kali
-  const existingMakeup = await db
-    .select({ id: examMakeups.id })
+  // Cek entri susulan aktif yang sudah ada untuk daftar siswa terpilih
+  const existingRows = await db
+    .select({ studentId: examMakeups.studentId })
     .from(examMakeups)
     .where(
       and(
-        eq(examMakeups.studentId, studentId),
+        inArray(examMakeups.studentId, studentIds),
         eq(examMakeups.subjectId, subjectId),
         eq(examMakeups.isCompleted, false),
       ),
-    )
-    .limit(1);
+    );
 
-  if (existingMakeup.length > 0) {
+  const existingSet = new Set(existingRows.map((r) => r.studentId));
+  const validStudentIds = studentIds.filter((id) => !existingSet.has(id));
+
+  if (validStudentIds.length === 0) {
     return {
       success: false,
       message:
-        "Gagal: Siswa & mata pelajaran tersebut sudah ada di daftar susulan!",
+        "Gagal: Semua siswa yang dipilih sudah ada di daftar susulan mapel tersebut!",
     };
   }
 
-  await db.insert(examMakeups).values({
-    studentId,
-    subjectId,
-    reason,
-    notes,
-  });
+  await db.insert(examMakeups).values(
+    validStudentIds.map((studentId) => ({
+      studentId,
+      subjectId,
+      reason,
+      notes,
+    })),
+  );
 
   revalidateAll();
-  return { success: true, message: "Berhasil ditambahkan ke daftar susulan." };
+
+  const skippedCount = studentIds.length - validStudentIds.length;
+  const extraMsg =
+    skippedCount > 0
+      ? ` (${skippedCount} siswa dilewati karena sudah terdaftar)`
+      : "";
+
+  return {
+    success: true,
+    message: `Berhasil menambahkan ${validStudentIds.length} siswa ke daftar susulan${extraMsg}.`,
+  };
 }
 
 export async function toggleMakeupCompleted(id: number, current: boolean) {

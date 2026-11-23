@@ -40,7 +40,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import Link from "next/link";
-import { StudentAutocomplete } from "./student-autocomplete";
+import { MultiStudentAutocomplete } from "./multi-student-autocomplete";
 import { CopyIdButton } from "./copy-id-button";
 import { toast } from "./ui/toast";
 
@@ -97,7 +97,7 @@ export function AdminSusulanClient({
   const [searchQuery, setSearchQuery] = useState("");
 
   // Form state di dalam Dialog
-  const [selectedStudentId, setSelectedStudentId] = useState("");
+  const [selectedStudentIds, setSelectedStudentIds] = useState<number[]>([]);
   const [selectedSubjectId, setSelectedSubjectId] = useState("");
   const [selectedReason, setSelectedReason] = useState<
     "TIDAK_MASUK" | "TERBLOKIR_TUGAS" | "JAWABAN_TIDAK_TERKIRIM"
@@ -360,51 +360,52 @@ export function AdminSusulanClient({
           <form
             action={async (formData) => {
               const res = await addExamMakeup(formData);
-              if (!res.success) {
+              if (res.success) {
+                toast.add({
+                  type: "success",
+                  description: res.message,
+                });
+                setSelectedStudentIds([]);
+                setOpenAddDialog(false);
+              } else {
                 toast.add({
                   type: "error",
                   description: res.message,
                   priority: "high",
                 });
-                return;
               }
-              toast.add({
-                type: "success",
-                description: res.message,
-              });
-              setSelectedStudentId("");
-              setSelectedSubjectId("");
-              setOpenAddDialog(false);
             }}
             className="space-y-4 mt-2"
           >
-            {/* Hidden inputs agar Base UI Select selalu terkirim ke FormData */}
-            <input type="hidden" name="subjectId" value={selectedSubjectId} />
-            <input type="hidden" name="reason" value={selectedReason} />
-
+            {/* Pilih Banyak Siswa Sekaligus */}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold">
-                Cari & Pilih Siswa (Nama / ID Ujian) *
+                Cari & Pilih Siswa (Bisa Pilih Banyak) *
               </label>
-              <StudentAutocomplete
+              <MultiStudentAutocomplete
                 students={students}
-                selectedStudentId={selectedStudentId}
-                onSelect={setSelectedStudentId}
+                selectedStudentIds={selectedStudentIds}
+                onChange={setSelectedStudentIds}
               />
             </div>
 
+            {/* Mata Pelajaran Susulan */}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold">
-                Mata Pelajaran (1 Mapel) *
+                Mata Pelajaran Susulan *
               </label>
               <Select
+                name="subjectId"
                 value={selectedSubjectId}
                 onValueChange={(v) => setSelectedSubjectId(v ?? "")}
+                required
               >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="-- Pilih Mata Pelajaran --">
-                    {subjects.find((s) => String(s.id) === selectedSubjectId)
-                      ?.name || "-- Pilih Mata Pelajaran --"}
+                <SelectTrigger className="w-full h-9 text-xs">
+                  <SelectValue placeholder="Pilih Mapel *">
+                    {selectedSubjectId
+                      ? subjects.find((s) => String(s.id) === selectedSubjectId)
+                          ?.name
+                      : "Pilih Mapel *"}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
@@ -417,24 +418,24 @@ export function AdminSusulanClient({
               </Select>
             </div>
 
+            {/* Alasan Susulan / Ulang */}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold">
-                Alasan Wajib Susulan / Ulang *
+                Alasan Susulan / Ulang *
               </label>
               <Select
+                name="reason"
                 value={selectedReason}
-                onValueChange={(v) =>
-                  setSelectedReason(
-                    (v as
-                      | "TIDAK_MASUK"
-                      | "TERBLOKIR_TUGAS"
-                      | "JAWABAN_TIDAK_TERKIRIM") ?? "TIDAK_MASUK",
-                  )
-                }
+                onValueChange={(v) => setSelectedReason(v ?? "TIDAK_MASUK")}
+                required
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger className="w-full h-9 text-xs">
                   <SelectValue>
-                    {REASON_OPTIONS[selectedReason].label}
+                    {selectedReason === "TIDAK_MASUK"
+                      ? "Tidak Masuk Saat Ujian"
+                      : selectedReason === "TERBLOKIR_TUGAS"
+                        ? "Terblokir Karena Tugas"
+                        : "Jawaban Tidak Terkirim (Ulang dari Awal)"}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
@@ -451,22 +452,35 @@ export function AdminSusulanClient({
               </Select>
             </div>
 
+            {/* Catatan Tambahan */}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold">
-                Catatan Detail (Opsional)
+                Catatan Jadwal / Keterangan (Opsional)
               </label>
               <Input
                 name="notes"
-                placeholder="Misal: Koneksi terputus saat submit jawaban"
+                placeholder="Misal: Susulan Hari Jumat Pukul 10.00 di Ruang Lab"
+                className="h-9 text-xs"
               />
             </div>
 
-            <Button
-              type="submit"
-              className="w-full bg-purple-600 hover:bg-purple-700"
-            >
-              Simpan Daftar Susulan
-            </Button>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setOpenAddDialog(false)}
+              >
+                Batal
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                className="bg-purple-600 hover:bg-purple-700"
+              >
+                Simpan Daftar Susulan
+              </Button>
+            </div>
           </form>
         </DialogContent>
       </Dialog>
