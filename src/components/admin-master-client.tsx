@@ -40,6 +40,7 @@ import {
   AlertTriangle,
   ShieldCheck,
 } from "lucide-react";
+import { StudentExcelImport } from "./student-excel-import";
 
 type StudentWithSummary = {
   id: number;
@@ -85,6 +86,7 @@ export function AdminMasterClient({ classes, subjects, students }: Props) {
           action={addStudent}
           className="bg-white p-4 rounded-xl border shadow-xs space-y-3"
         >
+          <StudentExcelImport />
           <h2 className="font-bold text-sm flex items-center gap-2 text-blue-700">
             <UserPlus className="w-4 h-4" />
             1. Tambah Siswa Terlibat

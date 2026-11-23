@@ -240,3 +240,86 @@ export async function deleteExamMakeup(id: number) {
   await db.delete(examMakeups).where(eq(examMakeups.id, id));
   revalidateAll();
 }
+
+export async function bulkImportStudents(
+  rows: { examId: string; name: string; className: string }[],
+): Promise<{ success: boolean; message: string; insertedCount?: number }> {
+  if (!rows || rows.length === 0) {
+    return { success: false, message: "Data Excel kosong atau tidak terbaca." };
+  }
+
+  // 1. Ambil semua kelas & examId yang sudah ada
+  const [existingClasses, existingStudents] = await Promise.all([
+    db.select().from(classes),
+    db.select({ examId: students.examId }).from(students),
+  ]);
+
+  const classMap = new Map<string, number>();
+  for (const c of existingClasses) {
+    classMap.set(c.name.trim().toUpperCase(), c.id);
+  }
+
+  const existingExamIds = new Set(
+    existingStudents.map((s) => s.examId.trim().toUpperCase()),
+  );
+
+  // 2. Pastikan semua kelas baru dari file Excel dibuat otomatis
+  const uniqueNewClassNames = new Set<string>();
+  for (const r of rows) {
+    const cleanClass = r.className?.trim().toUpperCase();
+    if (cleanClass && !classMap.has(cleanClass)) {
+      uniqueNewClassNames.add(cleanClass);
+    }
+  }
+
+  if (uniqueNewClassNames.size > 0) {
+    const insertedClasses = await db
+      .insert(classes)
+      .values(Array.from(uniqueNewClassNames).map((name) => ({ name })))
+      .returning();
+
+    for (const c of insertedClasses) {
+      classMap.set(c.name.trim().toUpperCase(), c.id);
+    }
+  }
+
+  // 3. Filter baris valid & belum pernah terdaftar
+  const toInsert: { examId: string; name: string; classId: number }[] = [];
+  const seenInBatch = new Set<string>();
+
+  for (const r of rows) {
+    const examId = r.examId?.trim();
+    const name = r.name?.trim();
+    const cleanClass = r.className?.trim().toUpperCase();
+
+    if (!examId || !name || !cleanClass) continue;
+
+    const upperExamId = examId.toUpperCase();
+    if (existingExamIds.has(upperExamId) || seenInBatch.has(upperExamId))
+      continue;
+
+    const classId = classMap.get(cleanClass);
+    if (!classId) continue;
+
+    seenInBatch.add(upperExamId);
+    toInsert.push({ examId, name, classId });
+  }
+
+  if (toInsert.length === 0) {
+    return {
+      success: false,
+      message:
+        "Tidak ada siswa baru untuk diimpor (semua ID Ujian sudah terdaftar atau format kolom salah).",
+    };
+  }
+
+  // 4. Insert batch ke database
+  await db.insert(students).values(toInsert);
+  revalidateAll();
+
+  return {
+    success: true,
+    insertedCount: toInsert.length,
+    message: `Berhasil mengimpor ${toInsert.length} data siswa baru!`,
+  };
+}

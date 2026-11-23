@@ -36,6 +36,7 @@ import {
   Sparkles,
   BookOpen,
 } from "lucide-react";
+import { DirectoryStudent, FindMeWidget } from "./find-me-widget";
 
 export type GroupedBlockedStudent = {
   studentId: number;
@@ -45,6 +46,7 @@ export type GroupedBlockedStudent = {
   subjects: { id: number; name: string }[];
   hasTugasHarian: boolean;
   hasTataTertib: boolean;
+  notes: string[];
 };
 
 export type GroupedMakeupStudent = {
@@ -66,6 +68,7 @@ type Props = {
   subjects: { id: number; name: string }[];
   blockedStudents: GroupedBlockedStudent[];
   makeupStudents: GroupedMakeupStudent[];
+  directoryStudents: DirectoryStudent[];
 };
 
 const MAKEUP_REASON_INFO = {
@@ -88,6 +91,7 @@ export function ExamLandingClient({
   subjects,
   blockedStudents,
   makeupStudents,
+  directoryStudents,
 }: Props) {
   const [selectedClass, setSelectedClass] = useState<string>("ALL");
   const [selectedSubject, setSelectedSubject] = useState<string>("ALL");
@@ -204,6 +208,8 @@ export function ExamLandingClient({
               </div>
             </a>
           </div>
+
+          <FindMeWidget students={directoryStudents} />
 
           {/* FILTER BAR INSTAN (KELAS & MATA PELAJARAN) */}
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3 animate-fade-in-up animate-delay-200">
