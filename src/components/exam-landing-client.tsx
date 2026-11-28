@@ -237,7 +237,11 @@ export function ExamLandingClient({
                   onValueChange={(val) => setSelectedClass(val ?? "ALL")}
                 >
                   <SelectTrigger className="w-full bg-slate-50/50 hover:bg-white transition-colors">
-                    <SelectValue placeholder="Pilih Kelas" />
+                    <SelectValue placeholder="Pilih Kelas">
+                      {selectedClass === "ALL"
+                        ? "Semua Kelas"
+                        : `Kelas ${classes.find((c) => String(c.id) === selectedClass)?.name ?? ""}`}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="ALL">Semua Kelas</SelectItem>
@@ -254,7 +258,13 @@ export function ExamLandingClient({
                   onValueChange={(val) => setSelectedSubject(val ?? "ALL")}
                 >
                   <SelectTrigger className="w-full bg-slate-50/50 hover:bg-white transition-colors">
-                    <SelectValue placeholder="Pilih Mata Pelajaran" />
+                    <SelectValue placeholder="Pilih Mata Pelajaran">
+                      {selectedSubject === "ALL"
+                        ? "Semua Mata Pelajaran"
+                        : (subjects.find(
+                            (s) => String(s.id) === selectedSubject,
+                          )?.name ?? "Semua Mata Pelajaran")}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="ALL">Semua Mata Pelajaran</SelectItem>
